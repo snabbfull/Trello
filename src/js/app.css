@@ -1,0 +1,31 @@
+body {
+  background-color: #6495ED;
+}
+
+.container {
+  display: flex;
+}
+
+.column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 30%;
+  border: 1px solid gray;
+  border-radius: 5px;
+  padding: 20px;
+  margin-left: 1%;
+  margin-right: 1%;
+  background: #C0C0C0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #3c3b3b;
+}
+
+.addLink {
+  text-decoration: none;
+  color: #696969;
+}
+
+.addLink:hover {
+  text-decoration: underline #696969;
+}
