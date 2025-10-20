@@ -1,6 +1,7 @@
 export class Widget {
   constructor(element) {
     this.element = element;
+    this.TTL_MS = 5 * 60 * 1000;
     this.addCard = this.addCard.bind(this);
     this.deleteInputContainer = this.deleteInputContainer.bind(this);
     this.addCardBtn = this.addCardBtn.bind(this);
@@ -43,6 +44,8 @@ export class Widget {
     this.element.addEventListener("mousedown", this.onColumnMouseDown);
 
     this.restoreCards();
+    // Schedule expiry cleanup for this column
+    this.scheduleExpiryForElement(this.element);
   }
 
   addCard(e) {
@@ -191,7 +194,17 @@ export class Widget {
   readCardsForElement(colEl) {
     const key = this.storageKeyForElement(colEl);
     try {
-      return JSON.parse(localStorage.getItem(key) || "[]");
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      // Backward compatibility: plain array
+      if (Array.isArray(parsed)) return parsed;
+      const { data, expiresAt } = parsed || {};
+      if (typeof expiresAt === "number" && Date.now() > expiresAt) {
+        localStorage.removeItem(key);
+        return [];
+      }
+      return Array.isArray(data) ? data : [];
     } catch {
       return [];
     }
@@ -199,7 +212,11 @@ export class Widget {
 
   writeCardsForElement(colEl, cards) {
     const key = this.storageKeyForElement(colEl);
-    localStorage.setItem(key, JSON.stringify(cards));
+    const expiresAt = Date.now() + this.TTL_MS;
+    const payload = { data: cards, expiresAt };
+    localStorage.setItem(key, JSON.stringify(payload));
+    // Schedule cleanup for this key
+    this.scheduleExpiryForElement(colEl);
   }
 
   persistAdd(card) {
@@ -224,5 +241,35 @@ export class Widget {
   restoreCards() {
     const cards = this.readCardsForElement(this.element);
     cards.forEach((c) => this.appendCardDom(c));
+  }
+
+  scheduleExpiryForElement(colEl) {
+    const key = this.storageKeyForElement(colEl);
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return; // legacy records without TTL
+      const { expiresAt } = parsed || {};
+      if (typeof expiresAt !== "number") return;
+      const delay = expiresAt - Date.now();
+      if (delay <= 0) {
+        localStorage.removeItem(key);
+        return;
+      }
+      // Fire-and-forget timeout; no need to track id per simplicity
+      setTimeout(() => {
+        try {
+          const check = localStorage.getItem(key);
+          if (!check) return;
+          const parsedCheck = JSON.parse(check);
+          // eslint-disable-next-line prettier/prettier
+          const exp = Array.isArray(parsedCheck) ? undefined : parsedCheck?.expiresAt;
+          if (typeof exp === "number" && Date.now() >= exp) {
+            localStorage.removeItem(key);
+          }
+        } catch { }
+      }, delay);
+    } catch { }
   }
 }
