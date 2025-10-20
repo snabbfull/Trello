@@ -268,8 +268,10 @@ export class Widget {
           if (typeof exp === "number" && Date.now() >= exp) {
             localStorage.removeItem(key);
           }
-        } catch { }
+          // eslint-disable-next-line no-empty
+        } catch {}
       }, delay);
-    } catch { }
+      // eslint-disable-next-line no-empty
+    } catch {}
   }
 }
