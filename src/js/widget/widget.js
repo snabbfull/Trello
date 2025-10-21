@@ -1,21 +1,29 @@
+/* eslint-disable no-empty */
+/* eslint-disable prettier/prettier */
 export class Widget {
   constructor(element) {
     this.element = element;
     this.TTL_MS = 5 * 60 * 1000;
+
+    // bind
     this.addCard = this.addCard.bind(this);
-    this.deleteInputContainer = this.deleteInputContainer.bind(this);
     this.addCardBtn = this.addCardBtn.bind(this);
+    this.deleteInputContainer = this.deleteInputContainer.bind(this);
     this.onDeleteCardClick = this.onDeleteCardClick.bind(this);
     this.onColumnMouseDown = this.onColumnMouseDown.bind(this);
     this.onDocumentMouseMove = this.onDocumentMouseMove.bind(this);
     this.onDocumentMouseUp = this.onDocumentMouseUp.bind(this);
+    this.onWindowPointerLeave = this.onWindowPointerLeave.bind(this);
+    this.onVisibilityChange = this.onVisibilityChange.bind(this);
 
+    // elements & state
     this.link = this.element.querySelector(".addLink");
-    this.link.addEventListener("click", this.addCard);
+    this.linkOriginalText = this.link ? this.link.textContent : "+ Add another card";
+    if (this.link) this.link.addEventListener("click", this.addCard);
 
+    // Reusable input container (one per Widget instance)
     this.inputContainer = document.createElement("div");
     this.inputContainer.classList.add("inputContainer");
-
     this.input = document.createElement("input");
     this.input.type = "text";
     this.input.placeholder = "Enter a title for this card...";
@@ -32,28 +40,54 @@ export class Widget {
     this.deleteBtn.textContent = "✖";
     this.deleteBtn.addEventListener("click", this.deleteInputContainer);
 
+    // drag state
     this.draggedCard = undefined;
     this.placeholder = undefined;
     this.dragOffsetX = 0;
     this.dragOffsetY = 0;
     this.dropColumnEl = this.element;
+    this.originalParent = null;
+    this.originalNextSibling = null;
 
-    // eslint-disable-next-line prettier/prettier
-    this.columnKey = ["todo", "inprogress", "done"].find((c) => this.element.classList.contains(c)) || "todo";
+    this.columnKey =
+      ["todo", "inprogress", "done"].find((c) =>
+        this.element.classList.contains(c)
+      ) || "todo";
 
+    // listen for down events on the column container (delegation)
     this.element.addEventListener("mousedown", this.onColumnMouseDown);
 
+    // restore and schedule cleanup
     this.restoreCards();
-    // Schedule expiry cleanup for this column
     this.scheduleExpiryForElement(this.element);
   }
 
+  // ---------- Add card UI ----------
   addCard(e) {
     e.preventDefault();
-    this.inputContainer.append(this.input);
-    this.inputContainer.append(this.addBtn);
-    this.inputContainer.append(this.deleteBtn);
-    this.element.insertBefore(this.inputContainer, this.link);
+    // if inputContainer is already shown in this column, don't open another
+    if (this.inputContainer.isConnected) {
+      // If somehow another column's input exists, remove it first
+      if (this.inputContainer.closest(".column") === this.element) {
+        this.input.focus();
+        return;
+      } else {
+        this.inputContainer.remove();
+      }
+    }
+
+    // Populate inputContainer fresh (ensures children order)
+    this.inputContainer.replaceChildren(this.input, this.addBtn, this.deleteBtn);
+    // change link text to a short variant and disable further clicks while open
+    if (this.link) {
+      this.link.dataset.prevText = this.link.textContent;
+      this.link.textContent = "+ Add card";
+      this.link.setAttribute("aria-expanded", "true");
+      this.link.style.pointerEvents = "none";
+      this.link.style.opacity = "0.6";
+    }
+
+    this.link.before(this.inputContainer);
     this.input.focus();
   }
 
@@ -65,105 +99,23 @@ export class Widget {
     this.appendCardDom(cardData);
     this.persistAdd(cardData);
 
-    this.input.value = "";
-    this.inputContainer.remove();
+    this.cleanupInputContainer();
   }
 
   deleteInputContainer() {
-    this.inputContainer.remove();
+    this.cleanupInputContainer();
   }
 
-  onDeleteCardClick(e) {
-    const card = e.currentTarget.closest(".newCard");
-    if (!card) return;
-    const id = card.dataset.id;
-    const colEl = card.closest(".column") || this.element;
-    card.remove();
-    this.persistRemoveInElement(colEl, id);
-  }
-
-  onColumnMouseDown(e) {
-    // Do not start drag when clicking delete button
-    if (e.target.closest(".deleteBtn")) return;
-
-    const card = e.target.closest(".newCard");
-    if (!card || !this.element.contains(card)) return;
-    e.preventDefault();
-
-    const rect = card.getBoundingClientRect();
-    this.dragOffsetX = e.clientX - rect.left;
-    this.dragOffsetY = e.clientY - rect.top;
-
-    this.draggedCard = card;
-    this.draggedCard.classList.add("dragged");
-    this.draggedCard.style.width = rect.width + "px";
-
-    this.placeholder = document.createElement("div");
-    this.placeholder.classList.add("placeholder");
-    this.placeholder.style.height = rect.height + "px";
-    this.element.insertBefore(this.placeholder, this.draggedCard.nextSibling);
-
-    document.addEventListener("mousemove", this.onDocumentMouseMove);
-    document.addEventListener("mouseup", this.onDocumentMouseUp);
-  }
-
-  onDocumentMouseMove(e) {
-    if (!this.draggedCard) return;
-
-    // Move visually following the cursor
-    const x = e.clientX - this.dragOffsetX;
-    const y = e.clientY - this.dragOffsetY;
-    this.draggedCard.style.top = Math.max(0, y) + "px";
-    this.draggedCard.style.left = Math.max(0, x) + "px";
-
-    // Detect column under cursor
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    const colEl = under ? under.closest(".column") : null;
-    if (!colEl) return;
-    this.dropColumnEl = colEl;
-
-    // Find insertion point within target column
-    const cards = Array.from(colEl.querySelectorAll(".newCard:not(.dragged)"));
-    let next = null;
-    for (const c of cards) {
-      const r = c.getBoundingClientRect();
-      if (e.clientY < r.top + r.height / 2) {
-        next = c;
-        break;
-      }
+  cleanupInputContainer() {
+    if (this.inputContainer.isConnected) this.inputContainer.remove();
+    if (this.link) {
+      this.link.textContent = this.link.dataset.prevText || this.linkOriginalText;
+      this.link.removeAttribute("aria-expanded");
+      this.link.style.pointerEvents = "";
+      this.link.style.opacity = "";
+      delete this.link.dataset.prevText;
     }
-    const linkEl = colEl.querySelector(".addLink");
-    if (next) {
-      colEl.insertBefore(this.placeholder, next);
-    } else if (linkEl) {
-      colEl.insertBefore(this.placeholder, linkEl);
-    } else {
-      colEl.appendChild(this.placeholder);
-    }
-  }
-
-  onDocumentMouseUp() {
-    if (!this.draggedCard) return;
-
-    const sourceColEl = this.draggedCard.closest(".column") || this.element;
-    const targetColEl = this.dropColumnEl || this.element;
-
-    this.draggedCard.classList.remove("dragged");
-    this.draggedCard.style.top = "";
-    this.draggedCard.style.left = "";
-    this.draggedCard.style.width = "";
-    targetColEl.insertBefore(this.draggedCard, this.placeholder);
-    this.placeholder.remove();
-    this.placeholder = undefined;
-
-    this.persistOrderForElement(sourceColEl);
-    if (targetColEl !== sourceColEl) {
-      this.persistOrderForElement(targetColEl);
-    }
-
-    this.draggedCard = undefined;
-    document.removeEventListener("mousemove", this.onDocumentMouseMove);
-    document.removeEventListener("mouseup", this.onDocumentMouseUp);
+    this.input.value = "";
   }
 
   createDeleteButton() {
@@ -179,15 +131,231 @@ export class Widget {
     const card = document.createElement("div");
     card.classList.add("newCard");
     card.dataset.id = cardData.id;
-    card.textContent = cardData.text;
+    // text node go first so deleteBtn is separate child
+    const textNode = document.createTextNode(cardData.text);
+    card.append(textNode);
     const del = this.createDeleteButton();
-    card.appendChild(del);
-    this.element.insertBefore(card, this.link);
+    card.append(del);
+    // if link exists in column, insert before it, otherwise append to column
+    const linkEl = this.element.querySelector(".addLink");
+    if (linkEl) linkEl.before(card);
+    else this.element.append(card);
   }
 
+  // ---------- Delete ----------
+  onDeleteCardClick(e) {
+    const card = e.currentTarget.closest(".newCard");
+    if (!card) return;
+    const id = card.dataset.id;
+    const colEl = card.closest(".column") || this.element;
+    card.remove();
+    this.persistRemoveInElement(colEl, id);
+  }
+
+  // ---------- Drag & Drop ----------
+  onColumnMouseDown(e) {
+    // ignore clicks on the add input controls etc
+    if (e.target.closest(".deleteBtn")) return;
+    if (e.target.closest(".addBtn") || e.target.closest(".input-title")) return;
+
+    const card = e.target.closest(".newCard");
+    if (!card || !this.element.contains(card)) return;
+
+    e.preventDefault();
+
+    // prepare offsets
+    const rect = card.getBoundingClientRect();
+    this.dragOffsetX = e.clientX - rect.left;
+    this.dragOffsetY = e.clientY - rect.top;
+
+    // Save original position so we can restore/cancel if needed
+    this.originalParent = card.parentElement;
+    this.originalNextSibling = card.nextSibling;
+
+    // set drag state
+    this.draggedCard = card;
+    this.draggedCard.classList.add("dragged");
+    // set explicit width so it doesn't shrink when moved to body
+    this.draggedCard.style.width = rect.width + "px";
+    // set visual state for dragging; cursor becomes grabbing while dragging
+    this.draggedCard.style.position = "absolute";
+    this.draggedCard.style.zIndex = "1000";
+    this.draggedCard.style.cursor = "grabbing";
+    // pointer-events none allows elementFromPoint to find underlying columns
+    this.draggedCard.style.pointerEvents = "none";
+
+    // create placeholder in original location (so layout stays)
+    this.placeholder = document.createElement("div");
+    this.placeholder.classList.add("placeholder");
+    this.placeholder.style.height = rect.height + "px";
+    // place placeholder where the card was
+    if (this.originalNextSibling) this.originalParent.insertBefore(this.placeholder, this.originalNextSibling);
+    else this.originalParent.append(this.placeholder);
+
+    // move dragged card to body so absolute coords are relative to viewport
+    document.body.append(this.draggedCard);
+
+    // immediately position the card under cursor (avoids jump)
+    this.onDocumentMouseMove(e);
+
+    // add global listeners
+    document.addEventListener("mousemove", this.onDocumentMouseMove);
+    // use window for mouseup so we catch release outside document
+    window.addEventListener("mouseup", this.onDocumentMouseUp);
+    window.addEventListener("pointerleave", this.onWindowPointerLeave);
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
+  }
+
+  onDocumentMouseMove(e) {
+    if (!this.draggedCard) return;
+
+    // move element so cursor maintains initial relative offset
+    const x = e.clientX - this.dragOffsetX;
+    const y = e.clientY - this.dragOffsetY;
+    this.draggedCard.style.left = x + "px";
+    this.draggedCard.style.top = y + "px";
+
+    // find the column under cursor
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const colEl = under ? under.closest(".column") : null;
+    if (!colEl) {
+      // if no column under cursor, don't change dropColumnEl but still return
+      return;
+    }
+    this.dropColumnEl = colEl;
+
+    // compute insertion point: before the card whose midpoint is below cursor
+    const cards = Array.from(colEl.querySelectorAll(".newCard:not(.dragged)"));
+    let next = null;
+    for (const c of cards) {
+      const r = c.getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) {
+        next = c;
+        break;
+      }
+    }
+
+    const linkEl = colEl.querySelector(".addLink");
+    if (next) next.before(this.placeholder);
+    else if (linkEl) linkEl.before(this.placeholder);
+    else colEl.append(this.placeholder);
+  }
+
+  onDocumentMouseUp(e) {
+    if (!this.draggedCard) return;
+    // finalize drop; target is dropColumnEl or original parent
+    const targetColEl = this.dropColumnEl || this.originalParent || this.element;
+
+    // remove placeholder defensively (in case it was moved/duplicated)
+    if (this.placeholder && this.placeholder.parentElement) {
+      // insert card into placeholder position
+      targetColEl.insertBefore(this.draggedCard, this.placeholder);
+      this.placeholder.remove();
+    } else {
+      // fallback: try to insert into target column at end
+      targetColEl.append(this.draggedCard);
+    }
+
+    // reset inline styles so CSS rules apply
+    this.draggedCard.classList.remove("dragged");
+    this.draggedCard.style.position = "";
+    this.draggedCard.style.zIndex = "";
+    this.draggedCard.style.left = "";
+    this.draggedCard.style.top = "";
+    this.draggedCard.style.width = "";
+    this.draggedCard.style.cursor = ""; // let CSS define grab on hover
+    this.draggedCard.style.pointerEvents = "";
+
+    // persist order for both columns involved
+    try {
+      const sourceColEl = this.originalParent || this.element;
+      this.persistOrderForElement(sourceColEl);
+      if (targetColEl !== sourceColEl) {
+        this.persistOrderForElement(targetColEl);
+      }
+    } catch (err) {
+      // swallow persistence errors but ensure cleanup
+      // console.error(err);
+    }
+
+    // cleanup state & listeners
+    this._clearDragListeners();
+    this.draggedCard = undefined;
+    this.placeholder = undefined;
+    this.dropColumnEl = this.element;
+    this.originalParent = null;
+    this.originalNextSibling = null;
+  }
+
+  // Extra handlers to be robust if pointer leaves or page hides
+  onWindowPointerLeave() {
+    // If pointer left window, attempt to gracefully end drag
+    this.cancelDrag();
+  }
+
+  onVisibilityChange() {
+    // If tab hidden (user alt-tabs), cancel drag to avoid stuck placeholder
+    if (document.visibilityState === "hidden") this.cancelDrag();
+  }
+
+  cancelDrag() {
+    // If dragging, put card back to its original place (or remove placeholder)
+    if (!this.draggedCard) {
+      // remove any stray placeholder
+      if (this.placeholder && this.placeholder.parentElement) {
+        this.placeholder.remove();
+        this.placeholder = undefined;
+      }
+      this._clearDragListeners();
+      return;
+    }
+
+    // Remove placeholder and restore original positioning
+    if (this.placeholder && this.placeholder.parentElement) {
+      this.originalParent.insertBefore(this.draggedCard, this.placeholder);
+      this.placeholder.remove();
+      this.placeholder = undefined;
+    } else if (this.originalNextSibling) {
+      this.originalParent.insertBefore(this.draggedCard, this.originalNextSibling);
+    } else {
+      this.originalParent.append(this.draggedCard);
+    }
+
+    // reset styles
+    this.draggedCard.classList.remove("dragged");
+    this.draggedCard.style.position = "";
+    this.draggedCard.style.zIndex = "";
+    this.draggedCard.style.left = "";
+    this.draggedCard.style.top = "";
+    this.draggedCard.style.width = "";
+    this.draggedCard.style.cursor = "";
+    this.draggedCard.style.pointerEvents = "";
+
+    // persist original column order just in case
+    try {
+      if (this.originalParent) this.persistOrderForElement(this.originalParent);
+    } catch { }
+
+    this._clearDragListeners();
+    this.draggedCard = undefined;
+    this.dropColumnEl = this.element;
+    this.originalParent = null;
+    this.originalNextSibling = null;
+  }
+
+  _clearDragListeners() {
+    document.removeEventListener("mousemove", this.onDocumentMouseMove);
+    window.removeEventListener("mouseup", this.onDocumentMouseUp);
+    window.removeEventListener("pointerleave", this.onWindowPointerLeave);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
+  }
+
+  // ---------- localStorage ----------
   storageKeyForElement(colEl) {
-    // eslint-disable-next-line prettier/prettier
-    const key = ["todo", "inprogress", "done"].find((c) => colEl.classList.contains(c)) || this.columnKey;
+    const key =
+      ["todo", "inprogress", "done"].find((c) =>
+        colEl.classList.contains(c)
+      ) || this.columnKey;
     return `cards:${key}`;
   }
 
@@ -197,7 +365,6 @@ export class Widget {
       const raw = localStorage.getItem(key);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      // Backward compatibility: plain array
       if (Array.isArray(parsed)) return parsed;
       const { data, expiresAt } = parsed || {};
       if (typeof expiresAt === "number" && Date.now() > expiresAt) {
@@ -215,7 +382,6 @@ export class Widget {
     const expiresAt = Date.now() + this.TTL_MS;
     const payload = { data: cards, expiresAt };
     localStorage.setItem(key, JSON.stringify(payload));
-    // Schedule cleanup for this key
     this.scheduleExpiryForElement(colEl);
   }
 
@@ -249,7 +415,7 @@ export class Widget {
       const raw = localStorage.getItem(key);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return; // legacy records without TTL
+      if (Array.isArray(parsed)) return;
       const { expiresAt } = parsed || {};
       if (typeof expiresAt !== "number") return;
       const delay = expiresAt - Date.now();
@@ -257,21 +423,19 @@ export class Widget {
         localStorage.removeItem(key);
         return;
       }
-      // Fire-and-forget timeout; no need to track id per simplicity
       setTimeout(() => {
         try {
           const check = localStorage.getItem(key);
           if (!check) return;
           const parsedCheck = JSON.parse(check);
-          // eslint-disable-next-line prettier/prettier
-          const exp = Array.isArray(parsedCheck) ? undefined : parsedCheck?.expiresAt;
+          const exp = Array.isArray(parsedCheck)
+            ? undefined
+            : parsedCheck?.expiresAt;
           if (typeof exp === "number" && Date.now() >= exp) {
             localStorage.removeItem(key);
           }
-          // eslint-disable-next-line no-empty
-        } catch {}
+        } catch { }
       }, delay);
-      // eslint-disable-next-line no-empty
-    } catch {}
+    } catch { }
   }
 }

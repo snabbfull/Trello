@@ -1,65 +1,77 @@
 .inputContainer {
   width: 100%;
-  margin-bottom: 10px;
-  margin-top: 10px;
-  align-items: center;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .input-title {
   color: gray;
-  margin-top: 5px;
-  margin-bottom: 5px;
   width: 100%;
-  height: 50px;
+  height: 45px;
   box-sizing: border-box;
   border-radius: 5px;
+  border: 1px solid #ccc;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-title:focus {
+  border-color: #4caf50;
+  box-shadow: 0 0 4px rgba(76, 175, 80, 0.4);
 }
 
 .addBtn {
-  height: 30px;
+  height: 34px;
   font-weight: bold;
-  background-color: green;
+  background-color: #4caf50;
   border: none;
   color: white;
-  margin-right: 20px;
+  border-radius: 5px;
   cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.addBtn:hover {
+  background-color: #43a047;
 }
 
 .deleteBtn {
   color: gray;
   cursor: pointer;
+  user-select: none;
 }
 
+/* --- Карточка --- */
 .newCard {
-  color: rgb(118, 117, 117);
+  color: rgb(70, 70, 70);
   width: 100%;
   min-height: 50px;
-  height: auto;
-  background-color: rgb(185, 183, 183);
+  background-color: rgb(200, 198, 198);
   padding: 10px;
   box-sizing: border-box;
   border-radius: 5px;
-  border: 1px solid rgb(114, 112, 112);
-  margin-bottom: 10px;
-  margin-top: 10px;
-  cursor: grabbing;
+  border: 1px solid rgb(130, 130, 130);
+  margin: 10px 0;
+  cursor: grab;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
-  /* Allow long words/URLs to wrap within the card */
   word-break: break-word;
   overflow-wrap: anywhere;
   white-space: normal;
-  min-width: 0;
-  transition: all 0.3s ease;
-  &:hover {
-    background-color: rgb(176, 172, 172);
-    color: white;
-  }
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-/* Hide delete button by default, show on hover */
+.newCard:hover {
+  background-color: rgb(176, 172, 172);
+  color: white;
+}
+
+/* --- Удаление --- */
 .newCard .deleteBtn {
   opacity: 0;
   pointer-events: none;
@@ -73,18 +85,24 @@
   pointer-events: auto;
 }
 
+/* --- Активное перетаскивание --- */
 .newCard.dragged {
   position: absolute;
   pointer-events: none;
-  opacity: 0.85;
+  opacity: 0.9;
   z-index: 1000;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+  transform: scale(1.03);
+  transition: none;
+  /* отключаем переходы во время drag */
 }
 
+/* --- Placeholder --- */
 .placeholder {
   width: 100%;
   height: 50px;
   border: 2px dashed #888;
   border-radius: 5px;
-  margin-bottom: 10px;
-  margin-top: 10px;
+  margin: 10px 0;
+  background-color: rgba(0, 0, 0, 0.05);
 }
