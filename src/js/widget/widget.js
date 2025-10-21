@@ -183,7 +183,7 @@ export class Widget {
     this.draggedCard.style.cursor = "grabbing";
     // pointer-events none allows elementFromPoint to find underlying columns
     this.draggedCard.style.pointerEvents = "none";
-
+    document.body.style.cursor = "grabbing";
     // create placeholder in original location (so layout stays)
     this.placeholder = document.createElement("div");
     this.placeholder.classList.add("placeholder");
@@ -348,6 +348,7 @@ export class Widget {
     window.removeEventListener("mouseup", this.onDocumentMouseUp);
     window.removeEventListener("pointerleave", this.onWindowPointerLeave);
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
+    document.body.style.cursor = "";
   }
 
   // ---------- localStorage ----------
